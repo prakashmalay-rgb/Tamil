@@ -30,9 +30,10 @@ app.add_middleware(
 )
 
 class ChatRequest(BaseModel):
-    prompt: str
-    temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 256
+    prompt: Optional[str] = None
+    messages: Optional[list] = None
+    temperature: Optional[float] = 0.3
+    max_tokens: Optional[int] = 512
     top_p: Optional[float] = 0.9
 
 @app.post("/chat")
@@ -40,14 +41,23 @@ class ChatRequest(BaseModel):
 async def chat_endpoint(req: ChatRequest):
     """
     Executes live inference directly against the active Qwen 3.6 model in Kaggle GPU memory
+    with full multi-turn conversation memory support.
     """
     if not execute_remote:
         return {
-            "response": f"வணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt}'.",
+            "response": f"வணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt or 'உரையாடல்'}'.",
             "status": "demo"
         }
 
-    tokens_to_generate = min(max(req.max_tokens or 160, 160), 384)
+    # Extract conversation history
+    if req.messages and len(req.messages) > 0:
+        raw_turns = req.messages
+    elif req.prompt:
+        raw_turns = [{"role": "user", "content": req.prompt}]
+    else:
+        return {"response": "வணக்கம்! வினவல் காலியாக உள்ளது.", "status": "empty"}
+
+    tokens_to_generate = min(max(req.max_tokens or 512, 256), 768)
 
     # Python execution snippet inside Kaggle container using chat template
     py_code = f"""
@@ -65,15 +75,24 @@ try:
             except Exception:
                 pass
 
-        p = {repr(req.prompt)}
-        messages = [
-            {{'role': 'system', 'content': 'You are an intelligent, polite, and native Tamil AI assistant. Always provide a clear, helpful, complete, and grammatically accurate response in natural Tamil (தமிழ்). Follow strict Subject-Verb Agreement: with the honorific pronoun நீங்கள் (you), always conjugate verbs with -ஈர்கள் (e.g., நீங்கள் எப்படி இருக்கிறீர்கள்?), never with -ஓம் (இருப்போம்).'}},
-            {{'role': 'user', 'content': p}}
-        ]
+        system_content = (
+            'You are an intelligent, polite, and native Tamil AI assistant. '
+            'Regardless of whether the user writes in English, Tanglish, or Tamil, ALWAYS respond in fluent, grammatically accurate, pure Tamil (தமிழ்). '
+            'When asked to write a letter, email, or official document, IMMEDIATELY draft the full, formal letter directly in proper Tamil (அனுப்புநர், பெறுநர், பொருள், மதிப்பிற்குரிய ஐயா, முழுமையான கடித உள்ளடக்கம், இப்படிக்கு). '
+            'When the user provides names, addresses, or contact information, IMMEDIATELY embed them seamlessly into the requested letter or task. '
+            'CRITICAL: NEVER output an empty list of bracket placeholders like [நீங்கள் பெயர்] or [உங்கள் முகவரி]. Always write the complete, ready-to-use, professional letter in full. '
+            'Follow strict Subject-Verb Agreement: with நீங்கள் (you), always conjugate verbs with -ஈர்கள் (e.g., நீங்கள் எப்படி இருக்கிறீர்கள்?), never with -ஓம் (இருப்போம்).'
+        )
+        raw_turns = {repr(raw_turns)}
+        messages = [{{'role': 'system', 'content': system_content}}]
+        for m in raw_turns:
+            if isinstance(m, dict) and m.get('role') in ('user', 'assistant') and m.get('content'):
+                messages.append({{'role': m['role'], 'content': m['content']}})
+
         try:
             formatted_input = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True) + '<think>\\n\\n</think>\\n'
         except Exception:
-            formatted_input = p
+            formatted_input = str(raw_turns[-1].get('content', ''))
 
         inputs = tokenizer(formatted_input, return_tensors='pt').to(model.device)
         gen_kwargs = {{

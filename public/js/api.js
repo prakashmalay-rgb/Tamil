@@ -22,7 +22,7 @@ const ApiService = {
   /**
    * Send prompt to Tamil Qwen 3.6 LLM Backend
    */
-  async generateTamilLlm(prompt, onToken) {
+  async generateTamilLlm(prompt, onToken, messages = null) {
     const startTime = performance.now();
     const kaggleUrl = this.getKaggleUrl();
     const params = this.getSamplingParams();
@@ -38,6 +38,7 @@ const ApiService = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: prompt,
+          messages: messages,
           temperature: params.temperature,
           max_tokens: params.max_tokens,
           top_p: params.top_p

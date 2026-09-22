@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let isGenerating = false;
   let conversations = JSON.parse(localStorage.getItem("tamil_chat_history") || "[]");
   let activeChatId = null;
+  let sessionMessages = [];
 
   // DOM Elements
   const chatViewport = document.getElementById("chatViewport");
@@ -114,6 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function appendUserMessage(text) {
+    sessionMessages.push({ role: "user", content: text });
     const row = document.createElement("div");
     row.className = "message-row user-row";
     row.innerHTML = `<div class="user-bubble">${SafeMarkdown.escapeHtml(text)}</div>`;
@@ -154,9 +156,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let result;
     if (isTamil) {
-      result = await ApiService.generateTamilLlm(prompt, onToken);
+      result = await ApiService.generateTamilLlm(prompt, onToken, sessionMessages);
     } else {
       result = await ApiService.generateOpenAi(prompt, onToken);
+    }
+
+    if (result && result.text) {
+      sessionMessages.push({ role: "assistant", content: result.text });
     }
 
     bodyEl.innerHTML = SafeMarkdown.render(result.text);
@@ -250,6 +256,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // New chat button
   btnNewChat.addEventListener("click", () => {
     chatViewport.innerHTML = "";
+    sessionMessages = [];
     if (welcomeHero) {
       chatViewport.appendChild(welcomeHero);
       welcomeHero.style.display = "block";
