@@ -11,9 +11,16 @@ import sys
 import uuid
 import websockets
 
-PROXY_BASE = "kkb-production.jupyter-proxy.kaggle.net/k/351751202/eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwidHlwIjoiSldUIn0..5oERZibGz-jHU-6Jn-7ZjA.P3FiKWhO_fqNAmJh2YBtKafyv3RU8RqEna65NhUsKZXFRSg6e3ydHvCgvpW2CtdgnGGl029hN1iL_TpSPd0QmWp6ijeHmekhZf4fGwcjlOAIrlFHSpxx6ukA29Ucxny0DKsm8tOrlyAEkVKN8wWSNiLzl4QtZpz7-S6axYLQ6yxqc6YdcMsRaJDFe0MGhH7TXt9kBvR2hwIB_MBnIvIBRaTpHM3ZbtCq5rDdovEGy33oGWFpdvG6yJH_x3KHqKEe.f2Nt9fg2DvopApUdClOG8w/proxy"
-KERNEL_ID = "9d151a2d-4867-46ee-813a-43c42a937ab9"
+PROXY_BASE = "kkb-production.jupyter-proxy.kaggle.net/k/351785047/eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwidHlwIjoiSldUIn0..PK36Pffr_Npzo_K0ZALIHQ.q9-771izoObz40P_dcAgbxQjSU9LAS2cQ5hq2rl7pcT_8dZkBR7hbKA3ogtsdzpHU7wI8LbkTSnoGv60cM3yMgVFxAordiVYl57NKw4uT-2TyC0f_Xpa10oLeTKtzN5WW1n5VACcrbvXiUujOPsOJ4PvbDEFFB6Bo8oMRbebCz1YlWs3paISFkp4bsgS1CGTWPzVcoXgC8c7j9BPKaUSWfcAY135XlmGwxBiUlO7ciHfb-69eoMMSNzhsFe4O2TC.ryhzH2b5wvByEEVqQUy95Q/proxy"
+KERNEL_ID = "63b125dc-7777-4da6-875b-e855ed7accbd"
 WS_URL = f"wss://{PROXY_BASE}/api/kernels/{KERNEL_ID}/channels"
+
+# Force UTF-8 on Windows consoles to prevent charmap errors on Tamil text
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 async def execute_remote(code: str, stream_output: bool = True) -> str:
     output = []
