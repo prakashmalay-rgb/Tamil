@@ -1,0 +1,14 @@
+# Deep Learning & GPU Training Dependencies (Kaggle Environment)
+transformers>=4.45.0
+accelerate>=1.0.0
+bitsandbytes>=0.44.0
+peft>=0.13.0
+trl>=0.11.0
+datasets>=3.0.0
+huggingface_hub>=0.25.0
+sentencepiece>=0.2.0
+evaluate>=0.4.3
+torch>=2.4.0
+pyngrok>=7.2.0
+kaggle>=1.6.0
+python-dotenv>=1.0.0
