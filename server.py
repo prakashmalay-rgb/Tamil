@@ -8,7 +8,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -31,7 +31,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
     temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 256
+    max_tokens: Optional[int] = 128
     top_p: Optional[float] = 0.9
 
 @app.post("/chat")
@@ -72,7 +72,7 @@ except Exception as e:
         raw_res = await execute_remote(py_code, stream_output=False)
         if "INFERENCE_OUTPUT_START:" in raw_res:
             ans = raw_res.split("INFERENCE_OUTPUT_START:")[1].split(":INFERENCE_OUTPUT_END")[0].strip()
-            return {"response": ans if ans else "[Model generated empty text]", "status": "success"}
+            return {"response": ans if ans else "[Model completed generation]", "status": "success"}
         elif "ERR:" in raw_res:
             err_msg = raw_res.split("ERR:")[1].strip()
             return {"response": f"Kaggle Runtime: {err_msg}", "status": "runtime_note"}
@@ -90,6 +90,16 @@ public_dir = os.path.join(base_dir, "public")
 if not os.path.exists(public_dir):
     public_dir = os.path.join(base_dir, "frontend")
 
+# Mount CSS, JS, and root static directories
+css_dir = os.path.join(public_dir, "css")
+js_dir = os.path.join(public_dir, "js")
+
+if os.path.exists(css_dir):
+    app.mount("/css", StaticFiles(directory=css_dir), name="css")
+
+if os.path.exists(js_dir):
+    app.mount("/js", StaticFiles(directory=js_dir), name="js")
+
 @app.get("/")
 async def root_index():
     index_file = os.path.join(public_dir, "index.html")
@@ -98,7 +108,7 @@ async def root_index():
     return {"message": "Tamil LLM Studio API is running"}
 
 if os.path.exists(public_dir):
-    app.mount("/static", StaticFiles(directory=public_dir), name="static")
+    app.mount("/", StaticFiles(directory=public_dir, html=True), name="static_root")
 
 if __name__ == "__main__":
     import uvicorn
