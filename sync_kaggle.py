@@ -24,7 +24,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 async def execute_remote(code: str, stream_output: bool = True) -> str:
     output = []
-    async with websockets.connect(WS_URL, max_size=50 * 1024 * 1024) as ws:
+    async with websockets.connect(WS_URL, max_size=50 * 1024 * 1024, ping_interval=20, ping_timeout=60) as ws:
         msg_id = uuid.uuid4().hex
         msg = {
             "header": {
