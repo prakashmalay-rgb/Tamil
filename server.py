@@ -32,7 +32,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
     temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 100
+    max_tokens: Optional[int] = 256
     top_p: Optional[float] = 0.9
 
 @app.post("/chat")
@@ -46,6 +46,8 @@ async def chat_endpoint(req: ChatRequest):
             "response": f"வணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt}'.",
             "status": "demo"
         }
+
+    tokens_to_generate = max(req.max_tokens or 256, 256)
 
     # Python execution snippet inside Kaggle container using chat template
     py_code = f"""
@@ -66,7 +68,7 @@ try:
 
         p = {repr(req.prompt)}
         messages = [
-            {{'role': 'system', 'content': 'You are an expert Tamil AI assistant and scholar. Regardless of the language of the prompt (English, Tanglish, Hindi, French, or Tamil), you MUST ALWAYS formulate your answer exclusively in pure, natural, grammatically correct Tamil with proper sentence structure (எழுவாய் - செயப்படுபொருள் - பயனிலை) and correct Sandhi rules.'}},
+            {{'role': 'system', 'content': 'You are an intelligent, articulate, and knowledgeable AI assistant. Answer helpfully, clearly, and thoughtfully in fluent, grammatically correct Tamil (தமிழ்). Regardless of the input language, formulate a complete and intelligent response in Tamil.'}},
             {{'role': 'user', 'content': p}}
         ]
         try:
@@ -76,7 +78,7 @@ try:
 
         inputs = tokenizer(formatted_input, return_tensors='pt').to(model.device)
         gen_kwargs = {{
-            'max_new_tokens': {req.max_tokens},
+            'max_new_tokens': {tokens_to_generate},
             'do_sample': True,
             'temperature': {req.temperature},
             'top_p': {req.top_p},
@@ -95,11 +97,9 @@ except Exception as e:
         raw_res = await execute_remote(py_code, stream_output=False)
         if "INFERENCE_OUTPUT_START:" in raw_res:
             ans = raw_res.split("INFERENCE_OUTPUT_START:")[1].split(":INFERENCE_OUTPUT_END")[0].strip()
-            # Clean up thinking tags if present or format them
-            if "<think>" in ans and "</think>" in ans:
-                think_part = ans.split("</think>")[0].replace("<think>", "").strip()
-                main_answer = ans.split("</think>")[1].strip()
-                ans = f"> *Thought: {think_part}*\n\n{main_answer}"
+            # Strip internal thought tags cleanly so user gets a direct, intelligent response
+            if "</think>" in ans:
+                ans = ans.split("</think>")[1].strip()
             elif "<think>" in ans:
                 ans = ans.replace("<think>", "").strip()
 

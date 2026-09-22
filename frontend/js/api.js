@@ -14,7 +14,7 @@ const ApiService = {
   getSamplingParams() {
     return {
       temperature: parseFloat(localStorage.getItem("sampling_temperature") || "0.7"),
-      max_tokens: parseInt(localStorage.getItem("sampling_max_tokens") || "100", 10),
+      max_tokens: parseInt(localStorage.getItem("sampling_max_tokens") || "256", 10),
       top_p: parseFloat(localStorage.getItem("sampling_top_p") || "0.9")
     };
   },

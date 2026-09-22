@@ -124,7 +124,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function handleSingleModelExecution(prompt, modelType) {
     const isTamil = modelType === "tamil";
     const badgeClass = isTamil ? "badge-tamil" : "badge-gpt";
-    const modelTitle = isTamil ? "Tamil Qwen 3.6.6" : "OpenAI GPT-4o";
+    const modelTitle = isTamil ? "Tamil Qwen 3.6" : "OpenAI GPT-4o";
 
     const row = document.createElement("div");
     row.className = "message-row assistant-row";
