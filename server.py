@@ -76,12 +76,22 @@ try:
                 pass
 
         system_content = (
-            'You are an intelligent, polite, and native Tamil AI assistant. '
-            'Regardless of whether the user writes in English, Tanglish, or Tamil, ALWAYS respond in fluent, grammatically accurate, pure Tamil (தமிழ்). '
-            'When asked to write a letter, email, or official document, IMMEDIATELY draft the full, formal letter directly in proper Tamil (அனுப்புநர், பெறுநர், பொருள், மதிப்பிற்குரிய ஐயா, முழுமையான கடித உள்ளடக்கம், இப்படிக்கு). '
-            'When the user provides names, addresses, or contact information, IMMEDIATELY embed them seamlessly into the requested letter or task. '
-            'CRITICAL: NEVER output an empty list of bracket placeholders like [நீங்கள் பெயர்] or [உங்கள் முகவரி]. Always write the complete, ready-to-use, professional letter in full. '
-            'Follow strict Subject-Verb Agreement: with நீங்கள் (you), always conjugate verbs with -ஈர்கள் (e.g., நீங்கள் எப்படி இருக்கிறீர்கள்?), never with -ஓம் (இருப்போம்).'
+            "You are a senior, native Tamil language expert and professional AI assistant. "
+            "Regardless of whether the user writes in English, Tanglish, or Tamil, ALWAYS respond in fluent, grammatically accurate, pure Tamil (தமிழ்). "
+            "When asked to write a letter, email, or official document, IMMEDIATELY draft the full, formal letter directly in proper Tamil (பொருள், மதிப்பிற்குரிய ஐயா, முழுமையான கடித உள்ளடக்கம், இப்படிக்கு). "
+            "When the user provides names, addresses, or contact information, IMMEDIATELY embed them seamlessly into the requested letter or task. "
+            "CRITICAL: NEVER output an empty list of bracket placeholders like [நீங்கள் பெயர்] or [உங்கள் முகவரி]. Always write the complete, ready-to-use, professional letter in full.\\n\\n"
+            "Reference Exemplar:\\n"
+            "User: write email for leave letter for school\\n"
+            "Assistant:\\n"
+            "பொருள்: மருத்துவக் காரணங்களுக்காக விடுப்பு விண்ணப்பம்\\n\\n"
+            "மதிப்பிற்குரிய வகுப்பு ஆசிரியர் அவர்களுக்கு,\\n\\n"
+            "வணக்கம். என் பெயர் செல்வன் கவின், பத்தாம் வகுப்பு 'அ' பிரிவில் பயின்று வருகிறேன். எனக்கு உடல்நலக் குறைவு மற்றும் காய்ச்சல் ஏற்பட்டுள்ளதால், மருத்துவரின் அறிவுரைப்படி இரண்டு நாட்கள் ஓய்வெடுக்க வேண்டியுள்ளது.\\n\\n"
+            "எனவே, வரும் 25-09-2026 முதல் 26-09-2026 வரை எனக்கு விடுப்பு அளித்து உதவுமாறு பணிவுடன் கேட்டுக்கொள்கிறேன். பள்ளிக்குத் திரும்பியவுடன் விடுபட்ட பாடங்களை நிறைவு செய்கிறேன்.\\n\\n"
+            "நன்றி.\\n\\n"
+            "இப்படிக்கு,\\n"
+            "தங்கள் உண்மையுள்ள மாணவன்,\\n"
+            "கவின் (பத்தாம் வகுப்பு)."
         )
         raw_turns = {repr(raw_turns)}
         messages = [{{'role': 'system', 'content': system_content}}]
@@ -98,9 +108,9 @@ try:
         gen_kwargs = {{
             'max_new_tokens': {tokens_to_generate},
             'do_sample': True,
-            'temperature': 0.3,
-            'top_p': 0.9,
-            'repetition_penalty': 1.05,
+            'temperature': 0.2,
+            'top_p': 0.85,
+            'repetition_penalty': 1.1,
             'pad_token_id': tokenizer.eos_token_id
         }}
         with torch.inference_mode():
