@@ -174,11 +174,16 @@ class TamilGrammarValidator:
 
     def correct_orthography(self, text: str) -> str:
         """
-        Fixes common transliteration and orthographical spelling errors in Tamil.
+        Fixes common transliteration, orthographical, and grammatical agreement errors in Tamil.
+        Enforces Subject-Verb Agreement (எழுவாய்-பயனிலை இயைபு).
         """
         spelling_map = [
             (r"\b(வானக்கம்|வான்கம்|வானக்க|வான்க|வணக்கம)\b", "வணக்கம்"),
             (r"(வானக்கம்|வான்கம்)", "வணக்கம்"),
+            # Subject-Verb Agreement: நீங்கள் (2nd person honorific) must agree with verb ending -ஈர்கள்
+            (r"\bநீங்கள்\s+(எப்படி\s+)?(இருப்போம்|இருக்கிறேன்|இருப்பான்|இருப்பாள்|இருக்கிறோம்)\b", r"நீங்கள் \g<1>இருக்கிறீர்கள்"),
+            (r"\bநீங்கள்\s+எப்படி\s+இருப்போம்\?", "நீங்கள் எப்படி இருக்கிறீர்கள்?"),
+            (r"\bஎப்படி\s+இருப்போம்\?", "நீங்கள் எப்படி இருக்கிறீர்கள்?"),
             (r"\bபாஷை\b", "மொழி"),
             (r"\bபாஷையில்\b", "மொழியில்"),
             (r"\bநீங்கள்\s+எப்படி\?", "நீங்கள் எப்படி இருக்கிறீர்கள்?"),

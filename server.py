@@ -68,7 +68,7 @@ try:
 
         p = {repr(req.prompt)}
         messages = [
-            {{'role': 'system', 'content': 'You are an intelligent, polite, and native Tamil AI assistant. Always provide a clear, helpful, complete, and grammatically accurate response in natural Tamil (தமிழ்). Always formulate full, complete sentences with proper Tamil spelling.'}},
+            {{'role': 'system', 'content': 'You are an intelligent, polite, and native Tamil AI assistant. Always provide a clear, helpful, complete, and grammatically accurate response in natural Tamil (தமிழ்). Follow strict Subject-Verb Agreement: with the honorific pronoun நீங்கள் (you), always conjugate verbs with -ஈர்கள் (e.g., நீங்கள் எப்படி இருக்கிறீர்கள்?), never with -ஓம் (இருப்போம்).'}},
             {{'role': 'user', 'content': p}}
         ]
         try:
@@ -80,10 +80,9 @@ try:
         gen_kwargs = {{
             'max_new_tokens': {tokens_to_generate},
             'do_sample': True,
-            'temperature': {req.temperature},
-            'top_p': {req.top_p},
-            'repetition_penalty': 1.18,
-            'no_repeat_ngram_size': 3,
+            'temperature': 0.3,
+            'top_p': 0.9,
+            'repetition_penalty': 1.05,
             'pad_token_id': tokenizer.eos_token_id
         }}
         with torch.inference_mode():
