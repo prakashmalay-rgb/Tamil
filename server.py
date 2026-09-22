@@ -47,7 +47,7 @@ async def chat_endpoint(req: ChatRequest):
             "status": "demo"
         }
 
-    tokens_to_generate = max(req.max_tokens or 256, 256)
+    tokens_to_generate = max(req.max_tokens or 512, 512)
 
     # Python execution snippet inside Kaggle container using chat template
     py_code = f"""
@@ -101,7 +101,8 @@ except Exception as e:
             if "</think>" in ans:
                 ans = ans.split("</think>")[1].strip()
             elif "<think>" in ans:
-                ans = ans.replace("<think>", "").strip()
+                # If generation ended inside thought tag, take whatever follows or fallback cleanly
+                ans = ""
 
             # Apply symbolic grammar & Sandhi correction
             try:

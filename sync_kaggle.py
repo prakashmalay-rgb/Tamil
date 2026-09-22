@@ -11,8 +11,8 @@ import sys
 import uuid
 import websockets
 
-PROXY_BASE = "kkb-production.jupyter-proxy.kaggle.net/k/351785047/eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwidHlwIjoiSldUIn0..PK36Pffr_Npzo_K0ZALIHQ.q9-771izoObz40P_dcAgbxQjSU9LAS2cQ5hq2rl7pcT_8dZkBR7hbKA3ogtsdzpHU7wI8LbkTSnoGv60cM3yMgVFxAordiVYl57NKw4uT-2TyC0f_Xpa10oLeTKtzN5WW1n5VACcrbvXiUujOPsOJ4PvbDEFFB6Bo8oMRbebCz1YlWs3paISFkp4bsgS1CGTWPzVcoXgC8c7j9BPKaUSWfcAY135XlmGwxBiUlO7ciHfb-69eoMMSNzhsFe4O2TC.ryhzH2b5wvByEEVqQUy95Q/proxy"
-KERNEL_ID = "63b125dc-7777-4da6-875b-e855ed7accbd"
+PROXY_BASE = "kkb-production.jupyter-proxy.kaggle.net/k/351875775/eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwidHlwIjoiSldUIn0..6PBLZn5txxkcw82d6_791w.mq8Te0FZjFzX_Q2_pbQJYfL7ldGQWtq9L-Dck5LFxQFRA1jd_1u93sq4y5Vr9lRA7HBbBOuvSeYD8_FYhy6H_I4eCiIdOB-jDYo3XcF9Gq4Vr4qdfihWP5oDuSrGd43RwPeB5ojrRCftXWANCIyFoG6thv32NVvnLCb301jmycIFHJPAczl8ZkNS5-xHdD4e9W8qXHez5E2iMlyGB07Tn-FeLIO4Xtr3qx8lOELnEr8.EjoIc7LIMwl1BHrZPQo6sQ/proxy"
+KERNEL_ID = "5defe18a-3030-432a-83c2-cf5f22cb330a"
 WS_URL = f"wss://{PROXY_BASE}/api/kernels/{KERNEL_ID}/channels"
 
 # Force UTF-8 on Windows consoles to prevent charmap errors on Tamil text
