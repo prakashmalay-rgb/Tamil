@@ -165,7 +165,54 @@ class TamilGrammarValidator:
         for pat, repl_fn in patterns:
             corrected = re.sub(pat, repl_fn, corrected)
 
+        # Apply orthography and spelling correction
+        corrected = self.correct_orthography(corrected)
+        # Ensure sentence completion
+        corrected = self.ensure_complete_sentence(corrected)
+
         return corrected
+
+    def correct_orthography(self, text: str) -> str:
+        """
+        Fixes common transliteration and orthographical spelling errors in Tamil.
+        """
+        spelling_map = [
+            (r"\b(வானக்கம்|வான்கம்|வானக்க|வான்க|வணக்கம)\b", "வணக்கம்"),
+            (r"(வானக்கம்|வான்கம்)", "வணக்கம்"),
+            (r"\bபாஷை\b", "மொழி"),
+            (r"\bபாஷையில்\b", "மொழியில்"),
+            (r"\bநீங்கள்\s+எப்படி\?", "நீங்கள் எப்படி இருக்கிறீர்கள்?"),
+            (r"\bஎப்படி\s+இருக்கீங்க\?", "எப்படி இருக்கிறீர்கள்?"),
+            (r"\bதொலையீடு\b", "தொடர்பு"),
+        ]
+        for pat, rep in spelling_map:
+            text = re.sub(pat, rep, text)
+        # Normalize any redundant consonant dots (இரட்டைப் புள்ளிகள் நீக்கம்)
+        text = re.sub(r"்+", "்", text)
+        return text
+
+    def ensure_complete_sentence(self, text: str) -> str:
+        """
+        Ensures the text does not end abruptly mid-sentence or mid-word.
+        """
+        text = text.strip()
+        if not text:
+            return "வணக்கம்! உங்களுக்கு நான் எவ்வாறு உதவ முடியும்?"
+
+        # If already ends with sentence boundary
+        if text[-1] in (".", "!", "?", "।", "\n", "”", '"', "🌟", "😊"):
+            return text
+
+        # Find the last sentence boundary
+        last_punct = max(text.rfind("."), text.rfind("!"), text.rfind("?"), text.rfind("\n"))
+        if last_punct > 10:
+            return text[:last_punct + 1].strip()
+
+        # If no punctuation exists, check if last word is incomplete and close gracefully
+        words = text.split()
+        if len(words) >= 3:
+            return text + "."
+        return text
 
     def _apply_doubling(self, match: re.Match) -> str:
         w1 = match.group(1)

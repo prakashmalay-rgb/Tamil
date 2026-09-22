@@ -47,7 +47,7 @@ async def chat_endpoint(req: ChatRequest):
             "status": "demo"
         }
 
-    tokens_to_generate = max(req.max_tokens or 512, 512)
+    tokens_to_generate = min(max(req.max_tokens or 160, 160), 384)
 
     # Python execution snippet inside Kaggle container using chat template
     py_code = f"""
@@ -68,11 +68,11 @@ try:
 
         p = {repr(req.prompt)}
         messages = [
-            {{'role': 'system', 'content': 'You are an intelligent, articulate, and knowledgeable AI assistant. Answer helpfully, clearly, and thoughtfully in fluent, grammatically correct Tamil (தமிழ்). Regardless of the input language, formulate a complete and intelligent response in Tamil.'}},
+            {{'role': 'system', 'content': 'You are an intelligent, polite, and native Tamil AI assistant. Always provide a clear, helpful, complete, and grammatically accurate response in natural Tamil (தமிழ்). Always formulate full, complete sentences with proper Tamil spelling.'}},
             {{'role': 'user', 'content': p}}
         ]
         try:
-            formatted_input = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            formatted_input = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True) + '<think>\\n\\n</think>\\n'
         except Exception:
             formatted_input = p
 
