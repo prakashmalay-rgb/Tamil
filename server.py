@@ -82,6 +82,8 @@ try:
             'do_sample': True,
             'temperature': {req.temperature},
             'top_p': {req.top_p},
+            'repetition_penalty': 1.18,
+            'no_repeat_ngram_size': 3,
             'pad_token_id': tokenizer.eos_token_id
         }}
         with torch.inference_mode():
