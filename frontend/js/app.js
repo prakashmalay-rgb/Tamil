@@ -174,10 +174,10 @@ document.addEventListener("DOMContentLoaded", () => {
     row.className = "message-row arena-row";
     row.innerHTML = `
       <div class="arena-viewport">
-        <!-- Tamil Qwen Column -->
+        <!-- Tamil Qwen 3.6 Column -->
         <div class="arena-card-column">
           <div class="arena-column-header">
-            <span class="model-badge badge-tamil">Tamil Qwen-2.5 1.5B (Kaggle)</span>
+            <span class="model-badge badge-tamil">Tamil Qwen 3.6 (Kaggle GPU)</span>
             <span class="metrics-badge tamil-metrics">Pending...</span>
           </div>
           <div class="arena-content-area tamil-body"><span class="typing-pulse"></span></div>

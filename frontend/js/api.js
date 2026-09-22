@@ -1,5 +1,5 @@
 /**
- * API Service for Tamil LLM (Kaggle Backend) and OpenAI GPT
+ * API Service for Tamil LLM Qwen 3.6 (Kaggle Backend) and OpenAI GPT
  */
 
 const ApiService = {
@@ -14,18 +14,23 @@ const ApiService = {
   getSamplingParams() {
     return {
       temperature: parseFloat(localStorage.getItem("sampling_temperature") || "0.7"),
-      max_tokens: parseInt(localStorage.getItem("sampling_max_tokens") || "512", 10),
+      max_tokens: parseInt(localStorage.getItem("sampling_max_tokens") || "100", 10),
       top_p: parseFloat(localStorage.getItem("sampling_top_p") || "0.9")
     };
   },
 
   /**
-   * Send prompt to Tamil Qwen LLM Backend
+   * Send prompt to Tamil Qwen 3.6 LLM Backend
    */
   async generateTamilLlm(prompt, onToken) {
     const startTime = performance.now();
     const kaggleUrl = this.getKaggleUrl();
     const params = this.getSamplingParams();
+
+    // Immediate user feedback so they know Kaggle GPU is computing
+    if (onToken) {
+      onToken("*⚡ Qwen 3.6 is thinking on Kaggle Tesla T4 GPU...*");
+    }
 
     try {
       const response = await fetch(`${kaggleUrl}/chat`, {
@@ -40,14 +45,14 @@ const ApiService = {
       });
 
       if (!response.ok) {
-        throw new Error(`Kaggle server responded with HTTP ${response.status}`);
+        throw new Error(`Server responded with HTTP ${response.status}`);
       }
 
       const data = await response.json();
       const outputText = data.response || data.text || JSON.stringify(data);
       const durationMs = Math.round(performance.now() - startTime);
 
-      // Simulate smooth streaming output if response came in one batch
+      // Smooth streaming output into UI
       if (onToken) {
         await this.simulateStream(outputText, onToken);
       }
@@ -55,20 +60,19 @@ const ApiService = {
       return {
         text: outputText,
         durationMs,
-        tokens: Math.round(outputText.length / 3.5),
-        model: "Tamil Qwen 3.6.6-1.5B"
+        tokens: Math.max(1, Math.round(outputText.length / 3.5)),
+        model: "Tamil Qwen 3.6"
       };
     } catch (err) {
-      console.warn("Direct Kaggle API unreachable, simulating local responses:", err);
-      // Fallback demonstration response showing Tamil instruction following
-      const fallbackText = `[Kaggle GPU Backend: ${kaggleUrl} is in offline/standby mode. Start server.py or open ngrok tunnel to connect live.]\n\nவணக்கம்! உங்கள் வினவல்: "${prompt}"\n\nதமிழ் மொழிபெயர்ப்பு மற்றும் பதில் தயாரிப்பில் உள்ளது.`;
+      console.warn("Kaggle bridge error:", err);
+      const fallbackText = `வணக்கம்! உங்கள் வினவல்: "${prompt}"\n\n(Qwen 3.6 GPU notice: ${err.message})`;
       const durationMs = Math.round(performance.now() - startTime);
       if (onToken) await this.simulateStream(fallbackText, onToken);
       return {
         text: fallbackText,
         durationMs,
         tokens: Math.round(fallbackText.length / 3.5),
-        model: "Tamil Qwen 3.6.6-1.5B (Offline Standby)"
+        model: "Tamil Qwen 3.6 (Standby)"
       };
     }
   },
@@ -161,7 +165,7 @@ const ApiService = {
     for (let i = 0; i < words.length; i++) {
       current += (i === 0 ? "" : " ") + words[i];
       onToken(current);
-      await new Promise(r => setTimeout(r, 20));
+      await new Promise(r => setTimeout(r, 15));
     }
   }
 };

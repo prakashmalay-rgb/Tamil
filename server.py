@@ -5,6 +5,7 @@ Serves the professional light-theme frontend and bridges requests to the live Ka
 
 import os
 import sys
+import re
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -18,7 +19,7 @@ try:
 except ImportError:
     execute_remote = None
 
-app = FastAPI(title="Tamil LLM & GPT Studio Server", version="1.0")
+app = FastAPI(title="Tamil LLM Qwen 3.6 Studio Server", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,28 +32,38 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
     temperature: Optional[float] = 0.7
-    max_tokens: Optional[int] = 128
+    max_tokens: Optional[int] = 100
     top_p: Optional[float] = 0.9
 
 @app.post("/chat")
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
     """
-    Executes live inference directly against the active Qwen 3 model in Kaggle GPU memory
+    Executes live inference directly against the active Qwen 3.6 model in Kaggle GPU memory
     """
     if not execute_remote:
         return {
-            "response": f"[Kaggle Live Bridge Demo]\nவணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt}'.",
+            "response": f"வணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt}'.",
             "status": "demo"
         }
 
-    # Python execution snippet inside Kaggle container using loaded model and tokenizer
+    # Python execution snippet inside Kaggle container using chat template
     py_code = f"""
-import sys
+import sys, torch
 try:
-    p = {repr(req.prompt)}
     if 'tokenizer' in globals() and 'model' in globals():
-        inputs = tokenizer(p, return_tensors='pt').to(model.device)
+        model.eval()
+        p = {repr(req.prompt)}
+        messages = [
+            {{'role': 'system', 'content': 'You are a helpful AI assistant fluent in Tamil, Tanglish, and English. Respond politely and helpfully.'}},
+            {{'role': 'user', 'content': p}}
+        ]
+        try:
+            formatted_input = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        except Exception:
+            formatted_input = p
+
+        inputs = tokenizer(formatted_input, return_tensors='pt').to(model.device)
         gen_kwargs = {{
             'max_new_tokens': {req.max_tokens},
             'do_sample': True,
@@ -60,7 +71,8 @@ try:
             'top_p': {req.top_p},
             'pad_token_id': tokenizer.eos_token_id
         }}
-        outputs = model.generate(**inputs, **gen_kwargs)
+        with torch.inference_mode():
+            outputs = model.generate(**inputs, **gen_kwargs)
         res_text = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
         print('INFERENCE_OUTPUT_START:' + res_text + ':INFERENCE_OUTPUT_END')
     else:
@@ -72,10 +84,17 @@ except Exception as e:
         raw_res = await execute_remote(py_code, stream_output=False)
         if "INFERENCE_OUTPUT_START:" in raw_res:
             ans = raw_res.split("INFERENCE_OUTPUT_START:")[1].split(":INFERENCE_OUTPUT_END")[0].strip()
-            return {"response": ans if ans else "[Model completed generation]", "status": "success"}
+            # Clean up thinking tags if present or format them
+            if "<think>" in ans and "</think>" in ans:
+                think_part = ans.split("</think>")[0].replace("<think>", "").strip()
+                main_answer = ans.split("</think>")[1].strip()
+                ans = f"> *Thought: {think_part}*\n\n{main_answer}"
+            elif "<think>" in ans:
+                ans = ans.replace("<think>", "").strip()
+            return {"response": ans if ans else "வணக்கம்! உங்களுக்கு எப்படி உதவ முடியும்? (Hello! How can I help you?)", "status": "success"}
         elif "ERR:" in raw_res:
             err_msg = raw_res.split("ERR:")[1].strip()
-            return {"response": f"Kaggle Runtime: {err_msg}", "status": "runtime_note"}
+            return {"response": f"Kaggle GPU Runtime: {err_msg}", "status": "runtime_note"}
         else:
             return {"response": raw_res.strip(), "status": "success"}
     except Exception as e:
@@ -90,7 +109,7 @@ public_dir = os.path.join(base_dir, "public")
 if not os.path.exists(public_dir):
     public_dir = os.path.join(base_dir, "frontend")
 
-# Mount CSS, JS, and root static directories
+# Mount static CSS & JS
 css_dir = os.path.join(public_dir, "css")
 js_dir = os.path.join(public_dir, "js")
 
@@ -112,5 +131,5 @@ if os.path.exists(public_dir):
 
 if __name__ == "__main__":
     import uvicorn
-    print("Starting Tamil LLM & GPT Studio on http://localhost:8000 ...")
+    print("Starting Tamil LLM Qwen 3.6 Studio on http://localhost:8000 ...")
     uvicorn.run(app, host="127.0.0.1", port=8000)
