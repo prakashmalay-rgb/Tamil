@@ -1,0 +1,15 @@
+{
+  "id": "your-username/tamil-llm-qwen25-15b",
+  "title": "Tamil LLM Qwen2.5 1.5B Instruct",
+  "code_file": "notebook.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
