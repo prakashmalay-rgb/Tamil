@@ -54,17 +54,16 @@ async def chat_endpoint(req: ChatRequest):
 import sys, torch
 try:
     if 'tokenizer' in globals() and 'model' in globals():
-        # Ensure mastery adapter is active if available
-        if 'mastery_loaded' not in globals():
-            import os
-            adapter_path = '/kaggle/working/tamil_qwen3_mastery_adapter'
-            if os.path.exists(adapter_path) and hasattr(model, 'load_adapter'):
-                try:
+        # Ensure mastery adapter is active if available on disk
+        import os
+        adapter_path = '/kaggle/working/tamil_qwen3_mastery_adapter'
+        if os.path.exists(adapter_path) and hasattr(model, 'load_adapter'):
+            try:
+                if 'mastery' not in getattr(model, 'peft_config', dict()):
                     model.load_adapter(adapter_path, adapter_name='mastery')
-                    model.set_adapter('mastery')
-                except Exception:
-                    pass
-            globals()['mastery_loaded'] = True
+                model.set_adapter('mastery')
+            except Exception:
+                pass
 
         p = {repr(req.prompt)}
         messages = [
@@ -98,21 +97,24 @@ except Exception as e:
         raw_res = await execute_remote(py_code, stream_output=False)
         if "INFERENCE_OUTPUT_START:" in raw_res:
             ans = raw_res.split("INFERENCE_OUTPUT_START:")[1].split(":INFERENCE_OUTPUT_END")[0].strip()
-            # Strip internal thought tags cleanly so user gets a direct, intelligent response
+            # 1. Thought-leak fail-safe: Strip internal reasoning tokens cleanly
             if "</think>" in ans:
                 ans = ans.split("</think>")[1].strip()
             elif "<think>" in ans:
-                # If generation ended inside thought tag, take whatever follows or fallback cleanly
-                ans = ""
+                ans = ans.replace("<think>", "").strip()
 
-            # Apply symbolic grammar & Sandhi correction
+            # 2. Neuro-symbolic grammar, Sandhi, and Subject-Verb agreement fail-safe
             try:
                 from grammar_validator import validator
                 ans = validator.correct_sandhi(ans)
             except Exception:
                 pass
 
-            return {"response": ans if ans else "வணக்கம்! உங்களுக்கு எப்படி உதவ முடியும்? (Hello! How can I help you?)", "status": "success"}
+            # 3. Truncation fail-safe: Ensure graceful termination
+            if not ans:
+                ans = "வணக்கம்! உங்களுக்கு நான் எவ்வாறு உதவ முடியும்?"
+
+            return {"response": ans, "status": "success"}
         elif "ERR:" in raw_res:
             err_msg = raw_res.split("ERR:")[1].strip()
             return {"response": f"Kaggle GPU Runtime: {err_msg}", "status": "runtime_note"}

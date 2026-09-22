@@ -4,9 +4,16 @@ Neuro-symbolic linguistic validation for Tamil sentence construction, Sandhi dou
 Based on Tolkappiyam and Nannool grammatical treatises.
 """
 
+import sys
 import re
 import unicodedata
 from typing import Dict, List, Tuple, Any, Optional
+
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 try:
     import tamil
