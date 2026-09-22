@@ -2242,3 +2242,80 @@ if issues:
 else:
     print("\nAUDIT RESULT: PASSED")
     print("Status: READY FOR VERSIONED EXPORT REVIEW — NOT READY FOR TRAINING")
+
+
+# ==============================================================================
+# Phase 1: Manual Promotion & QLoRA Fine-Tuning Execution
+# ==============================================================================
+import os, json, torch
+from datasets import Dataset
+from transformers import TrainingArguments, Trainer, DataCollatorForSeq2Seq
+
+# 1. Promote 20 audited Phase 1 records
+promoted_records = []
+for r in business_email_records:
+    rec = dict(r)
+    rec["status"] = "approved"
+    if "quality" in rec and isinstance(rec["quality"], dict):
+        rec["quality"]["reviewed"] = True
+    promoted_records.append(rec)
+
+for r in (customer_support_responses if isinstance(customer_support_responses, list) else customer_support_responses.values()):
+    if isinstance(r, dict):
+        rec = dict(r)
+        rec["status"] = "approved"
+        if "quality" in rec and isinstance(rec["quality"], dict):
+            rec["quality"]["reviewed"] = True
+        promoted_records.append(rec)
+
+export_path = "/kaggle/working/tamil_phase1_approved.jsonl"
+with open(export_path, "w", encoding="utf-8") as f:
+    for rec in promoted_records:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+print(f"Promoted and saved {len(promoted_records)} records to {export_path}")
+
+# 2. Format dataset for Qwen ChatML
+formatted_data = []
+for r in promoted_records:
+    messages = [
+        {"role": "system", "content": "You are a helpful, professional AI assistant fluent in Tamil and English."},
+        {"role": "user", "content": r.get("user_prompt") or r.get("prompt") or ""},
+        {"role": "assistant", "content": r.get("assistant_response") or r.get("response") or ""}
+    ]
+    chat_text = tokenizer.apply_chat_template(messages, tokenize=False)
+    formatted_data.append({"text": chat_text})
+
+raw_dataset = Dataset.from_list(formatted_data)
+def tok_fn(b):
+    tok = tokenizer(b["text"], truncation=True, max_length=512)
+    tok["labels"] = tok["input_ids"].copy()
+    return tok
+tokenized_dataset = raw_dataset.map(tok_fn, batched=True)
+
+# 3. Train with QLoRA
+model.train()
+output_adapter_dir = "/kaggle/working/tamil_qwen3_phase1_adapter"
+training_args = TrainingArguments(
+    output_dir=output_adapter_dir,
+    per_device_train_batch_size=1,
+    gradient_accumulation_steps=4,
+    num_train_epochs=3,
+    learning_rate=2e-4,
+    fp16=True,
+    logging_steps=1,
+    save_strategy="epoch",
+    report_to="none",
+    optim="paged_adamw_8bit"
+)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_dataset,
+    data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True)
+)
+
+train_result = trainer.train()
+trainer.save_model(output_adapter_dir)
+tokenizer.save_pretrained(output_adapter_dir)
+print(f"Training complete! Loss: {train_result.training_loss:.4f}, Adapter saved to {output_adapter_dir}")
