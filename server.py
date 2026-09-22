@@ -117,8 +117,12 @@ except Exception as e:
         else:
             return {"response": raw_res.strip(), "status": "success"}
     except Exception as e:
+        err_str = str(e)
+        if "timed out during opening handshake" in err_str or "ConnectTimeout" in err_str or "TimeoutError" in err_str:
+            friendly_msg = "⚠️ **Kaggle GPU Session Disconnected/Asleep**\n\nThe temporary Kaggle GPU session has timed out due to inactivity. Please open your Kaggle notebook tab, ensure the session is active/running, and refresh."
+            return {"response": friendly_msg, "status": "disconnected"}
         return {
-            "response": f"Bridge notice: {str(e)}",
+            "response": f"Bridge notice: {err_str}",
             "status": "error"
         }
 
