@@ -52,10 +52,21 @@ async def chat_endpoint(req: ChatRequest):
 import sys, torch
 try:
     if 'tokenizer' in globals() and 'model' in globals():
-        model.eval()
+        # Ensure mastery adapter is active if available
+        if 'mastery_loaded' not in globals():
+            import os
+            adapter_path = '/kaggle/working/tamil_qwen3_mastery_adapter'
+            if os.path.exists(adapter_path) and hasattr(model, 'load_adapter'):
+                try:
+                    model.load_adapter(adapter_path, adapter_name='mastery')
+                    model.set_adapter('mastery')
+                except Exception:
+                    pass
+            globals()['mastery_loaded'] = True
+
         p = {repr(req.prompt)}
         messages = [
-            {{'role': 'system', 'content': 'You are a helpful AI assistant fluent in Tamil, Tanglish, and English. Respond politely and helpfully.'}},
+            {{'role': 'system', 'content': 'You are an expert Tamil AI assistant and scholar. Regardless of the language of the prompt (English, Tanglish, Hindi, French, or Tamil), you MUST ALWAYS formulate your answer exclusively in pure, natural, grammatically correct Tamil with proper sentence structure (எழுவாய் - செயப்படுபொருள் - பயனிலை) and correct Sandhi rules.'}},
             {{'role': 'user', 'content': p}}
         ]
         try:
@@ -91,6 +102,14 @@ except Exception as e:
                 ans = f"> *Thought: {think_part}*\n\n{main_answer}"
             elif "<think>" in ans:
                 ans = ans.replace("<think>", "").strip()
+
+            # Apply symbolic grammar & Sandhi correction
+            try:
+                from grammar_validator import validator
+                ans = validator.correct_sandhi(ans)
+            except Exception:
+                pass
+
             return {"response": ans if ans else "வணக்கம்! உங்களுக்கு எப்படி உதவ முடியும்? (Hello! How can I help you?)", "status": "success"}
         elif "ERR:" in raw_res:
             err_msg = raw_res.split("ERR:")[1].strip()
