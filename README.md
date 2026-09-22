@@ -1,6 +1,6 @@
-# Tamil LLM: Qwen2.5-1.5B-Instruct LoRA Fine-Tuning & FastAPI Serving
+# Tamil LLM: Qwen 3.6-Instruct LoRA Fine-Tuning & FastAPI Serving
 
-This project fine-tunes `Qwen/Qwen2.5-1.5B-Instruct` for high-quality Tamil language tasks (Tamil, Tanglish, business communication, clarification, safety) using 4-bit QLoRA and exposes the model via FastAPI and an authenticated tunnel.
+This project fine-tunes `Qwen/Qwen 3.6-Instruct` for high-quality Tamil language tasks (Tamil, Tanglish, business communication, clarification, safety) using 4-bit QLoRA and exposes the model via FastAPI and an authenticated tunnel.
 
 ---
 

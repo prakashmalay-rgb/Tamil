@@ -31,7 +31,7 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
     return {
-        "response": f"[Tamil Qwen2.5 Studio - Vercel Edge]\nவணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt}'. மாதிரி பதிலளிக்க தயாராக உள்ளது.",
+        "response": f"[Tamil Qwen 3.6.6 Studio - Vercel Edge]\nவணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt}'. மாதிரி பதிலளிக்க தயாராக உள்ளது.",
         "status": "success"
     }
 

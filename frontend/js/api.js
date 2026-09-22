@@ -56,7 +56,7 @@ const ApiService = {
         text: outputText,
         durationMs,
         tokens: Math.round(outputText.length / 3.5),
-        model: "Tamil Qwen2.5-1.5B"
+        model: "Tamil Qwen 3.6.6-1.5B"
       };
     } catch (err) {
       console.warn("Direct Kaggle API unreachable, simulating local responses:", err);
@@ -68,7 +68,7 @@ const ApiService = {
         text: fallbackText,
         durationMs,
         tokens: Math.round(fallbackText.length / 3.5),
-        model: "Tamil Qwen2.5-1.5B (Offline Standby)"
+        model: "Tamil Qwen 3.6.6-1.5B (Offline Standby)"
       };
     }
   },
