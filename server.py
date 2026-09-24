@@ -57,7 +57,7 @@ async def chat_endpoint(req: ChatRequest):
     else:
         return {"response": "வணக்கம்! வினவல் காலியாக உள்ளது.", "status": "empty"}
 
-    tokens_to_generate = min(max(req.max_tokens or 512, 256), 768)
+    tokens_to_generate = min(max(req.max_tokens or 256, 128), 512)
 
     # Python execution snippet inside Kaggle container using chat template
     py_code = f"""
@@ -159,7 +159,46 @@ except Exception as e:
             "status": "error"
         }
 
-# Determine public/frontend path
+class ScansionRequest(BaseModel):
+    poem_text: str
+
+class TVAFeedRequest(BaseModel):
+    raw_text: str
+    title: Optional[str] = "TVA பொது நூல்"
+    author: Optional[str] = "தமிழ் இணையக் கல்விக்கழகம்"
+    era: Optional[str] = "சங்க காலம்"
+    category: Optional[str] = "இலக்கியம் / இலக்கணம்"
+
+@app.post("/api/pedagogy/scansion")
+async def pedagogy_scansion_endpoint(req: ScansionRequest):
+    """
+    Scans classical Tamil poetry (Venba, Kural) into metrical seers (அசைகள் & வாய்பாடுகள்).
+    """
+    try:
+        from tamil_pedagogy_engine import pedagogy_engine
+        res = pedagogy_engine.scan_kural(req.poem_text)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/tva/ingest_text")
+async def tva_ingest_endpoint(req: TVAFeedRequest):
+    """
+    Ingests TVA book passages into both RAG memory and SFT training curriculum.
+    """
+    try:
+        from tva_ingestor import ingestor
+        meta = {
+            "title": req.title,
+            "author": req.author,
+            "era": req.era,
+            "category": req.category
+        }
+        res = ingestor.process_and_save_book(req.raw_text, meta)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 base_dir = os.path.dirname(os.path.abspath(__file__))
 public_dir = os.path.join(base_dir, "public")
 if not os.path.exists(public_dir):

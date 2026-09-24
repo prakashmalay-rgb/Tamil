@@ -8,7 +8,6 @@ import json
 import os
 import random
 import itertools
-from grammar_validator import validator
 
 SYSTEM_PROMPT = (
     "You are an intelligent, polite, and native Tamil AI assistant. "

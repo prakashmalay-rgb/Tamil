@@ -11,8 +11,8 @@ import sys
 import uuid
 import websockets
 
-PROXY_BASE = "kkb-production.jupyter-proxy.kaggle.net/k/351875775/eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwidHlwIjoiSldUIn0..6PBLZn5txxkcw82d6_791w.mq8Te0FZjFzX_Q2_pbQJYfL7ldGQWtq9L-Dck5LFxQFRA1jd_1u93sq4y5Vr9lRA7HBbBOuvSeYD8_FYhy6H_I4eCiIdOB-jDYo3XcF9Gq4Vr4qdfihWP5oDuSrGd43RwPeB5ojrRCftXWANCIyFoG6thv32NVvnLCb301jmycIFHJPAczl8ZkNS5-xHdD4e9W8qXHez5E2iMlyGB07Tn-FeLIO4Xtr3qx8lOELnEr8.EjoIc7LIMwl1BHrZPQo6sQ/proxy"
-KERNEL_ID = "5defe18a-3030-432a-83c2-cf5f22cb330a"
+PROXY_BASE = "kkb-production.jupyter-proxy.kaggle.net/k/352065790/eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2IiwidHlwIjoiSldUIn0..0P2Nl7fcWthwnY9oitNqXA.Surfu8olhaRvjTIWG_S4Y574FRyhiyZeKgUA-bvjsSrW-mXrF4DhscLWz0xSRzwiY9jyqu9Mi1UteJv5NFQnJQ8FFehOQp1LlKp2QcsdyVrdlWWD5cfVZdF0hzd2-1BBubALocSE1LS6gmAazUu66gGHT0IybCTpOoocmzLH9rvXIBqCTEhp2xEJ9kQRVUWLmIV213DT1NkwhwAEWdgfYI5JuNH7CuVhP2wcAt-MqOt1OOGnz0-DaAtqPrImdgJQ.LNb0VtwUcp3Vf8Egm0_p8A/proxy"
+KERNEL_ID = "4c1d552d-a448-48d4-8854-d16247dea2c2"
 WS_URL = f"wss://{PROXY_BASE}/api/kernels/{KERNEL_ID}/channels"
 
 # Force UTF-8 on Windows consoles to prevent charmap errors on Tamil text
@@ -87,16 +87,37 @@ async def push_file(local_path: str, remote_dest: str = "/kaggle/working"):
     remote_path = f"{remote_dest}/{filename}"
     print(f"Pushing {local_path} -> {remote_path}...")
     with open(local_path, "rb") as f:
-        b64_content = base64.b64encode(f.read()).decode("ascii")
+        raw_bytes = f.read()
 
-    code = f"""
+    import gzip
+    gz_bytes = gzip.compress(raw_bytes)
+    chunk_size = 1024 * 1024  # 1 MB chunks
+    total_chunks = (len(gz_bytes) + chunk_size - 1) // chunk_size
+
+    # Initialize empty file on remote
+    init_code = f"with open('{remote_path}.gz', 'wb') as f: pass"
+    await execute_remote(init_code, stream_output=False)
+
+    for i in range(total_chunks):
+        chunk = gz_bytes[i * chunk_size : (i + 1) * chunk_size]
+        b64_chunk = base64.b64encode(chunk).decode("ascii")
+        append_code = f"""
 import base64
-data = base64.b64decode("{b64_content}")
-with open("{remote_path}", "wb") as f:
-    f.write(data)
-print("Saved: {remote_path} (" + str(len(data)) + " bytes)")
+with open('{remote_path}.gz', 'ab') as f:
+    f.write(base64.b64decode('{b64_chunk}'))
 """
-    await execute_remote(code)
+        await execute_remote(append_code, stream_output=False)
+        print(f"Uploaded chunk {i+1}/{total_chunks} ({(i+1)*100//total_chunks}%)...")
+
+    # Decompress on remote
+    unzip_code = f"""
+import gzip, os
+with gzip.open('{remote_path}.gz', 'rb') as f_in, open('{remote_path}', 'wb') as f_out:
+    f_out.write(f_in.read())
+os.remove('{remote_path}.gz')
+print(f"Successfully extracted {remote_path} (" + str(os.path.getsize('{remote_path}')) + " bytes)")
+"""
+    await execute_remote(unzip_code)
 
 async def pull_files(remote_dir: str = "/kaggle/working", local_dest_dir: str = "downloaded_outputs"):
     os.makedirs(local_dest_dir, exist_ok=True)

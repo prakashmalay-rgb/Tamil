@@ -1,38 +1,42 @@
+"""
+Live Multi-Turn Validation Probe
+Tests Turn 1: 'write email for leave letter for school'
+Tests Turn 2: 'Prakash 2, subbaraya Mudali Street, Royapettah CEO 9840705435 Company name - infygalaxy'
+"""
 import urllib.request
 import json
-import time
 import sys
 
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
+# Ensure UTF-8 output
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-def call_chat(messages):
-    payload = {
-        "messages": messages,
-        "max_tokens": 512,
-        "temperature": 0.3
-    }
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request("http://127.0.0.1:8000/chat", data=data, headers={"Content-Type": "application/json"})
-    t0 = time.time()
-    with urllib.request.urlopen(req) as resp:
-        res = json.loads(resp.read().decode("utf-8"))
-        return res.get("response"), time.time() - t0
+URL = "http://127.0.0.1:8000/chat"
 
-print("=== Simulating User Multi-Turn Interaction ===")
-history = []
+def send_chat(messages):
+    print(f"--> Sending request to {URL} with {len(messages)} message(s)...", flush=True)
+    payload = json.dumps({"messages": messages, "max_tokens": 512}).encode("utf-8")
+    req = urllib.request.Request(URL, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        res = json.loads(resp.read())
+        print(f"<-- Received response from {URL}!", flush=True)
+        return res
 
-# Turn 1
-p1 = "write email for leave letter for school"
-history.append({"role": "user", "content": p1})
-print(f"\nUser [Turn 1]: {p1}")
-ans1, t1 = call_chat(history)
-print(f"Assistant [Turn 1] ({t1:.2f}s):\n{ans1}")
-history.append({"role": "assistant", "content": ans1})
+print(">>> Testing Turn 1: 'write email for leave letter for school'")
+t1_msgs = [{"role": "user", "content": "write email for leave letter for school"}]
+r1 = send_chat(t1_msgs)
+asst_t1 = r1.get("response", "")
+print("\n[TURN 1 RESPONSE]:")
+print(asst_t1)
+print("\n" + "=" * 60 + "\n")
 
-# Turn 2
-p2 = "Prakash 2, subbaraya Mudali Street, Royapettah CEO 9840705435 Company name - infygalaxy"
-history.append({"role": "user", "content": p2})
-print(f"\nUser [Turn 2]: {p2}")
-ans2, t2 = call_chat(history)
-print(f"Assistant [Turn 2] ({t2:.2f}s):\n{ans2}")
+print(">>> Testing Turn 2: 'Prakash 2, subbaraya Mudali Street, Royapettah CEO 9840705435 Company name - infygalaxy'")
+t2_msgs = [
+    {"role": "user", "content": "write email for leave letter for school"},
+    {"role": "assistant", "content": asst_t1},
+    {"role": "user", "content": "Prakash 2, subbaraya Mudali Street, Royapettah CEO 9840705435 Company name - infygalaxy"}
+]
+r2 = send_chat(t2_msgs)
+asst_t2 = r2.get("response", "")
+print("\n[TURN 2 RESPONSE]:")
+print(asst_t2)

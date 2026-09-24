@@ -1,6 +1,6 @@
 """
-Production Scaled Training Pipeline (10,000 Golden Trees + DPO Alignment)
-Runs high-throughput completion-masked LoRA fine-tuning on Kaggle 2x Tesla T4 GPUs.
+End-to-End Production Scaled Training Pipeline (10,000 Golden Trees + DPO Alignment)
+Runs on Kaggle 2x Tesla T4 GPUs with completion-only loss masking and QLoRA.
 """
 
 import asyncio
@@ -9,33 +9,67 @@ import sys
 import sync_kaggle
 
 async def main():
-    print("=== Step 1: Uploading Scaled 10k SFT & 2.5k DPO Datasets to Kaggle ===")
-    local_sft = r"C:\Users\Admin\.gemini\antigravity-ide\scratch\kaggle_project\data\tamil_scaled_sft_10k.jsonl"
-    await sync_kaggle.push_file(local_sft, "/kaggle/working")
-
-    local_dpo = r"C:\Users\Admin\.gemini\antigravity-ide\scratch\kaggle_project\data\tamil_scaled_dpo_2500.jsonl"
-    await sync_kaggle.push_file(local_dpo, "/kaggle/working")
-
-    print("\n=== Step 2: Executing Completion-Masked Training & Alignment on 2x Tesla T4 ===")
+    print("\n=== Initializing Model and Executing Scaled Training on Kaggle 2x Tesla T4 ===")
     train_code = r"""
-import os, json, torch
+import os, sys, json, torch
 from datasets import Dataset
-from transformers import TrainingArguments, Trainer, DataCollatorForSeq2Seq
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments, Trainer, DataCollatorForSeq2Seq
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-# 1. Load Scaled 10k Dataset
-sft_path = "/kaggle/working/tamil_scaled_sft_10k.jsonl"
+# 1. Environment and Base Model Setup
+BASE_MODEL = "Qwen/Qwen3-4B"
+if 'model' not in globals() or 'tokenizer' not in globals():
+    print(f"Loading Base Model: {BASE_MODEL} in 4-bit NF4...")
+    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, use_fast=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_use_double_quant=True
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL,
+        quantization_config=quantization_config,
+        torch_dtype=torch.float16,
+        device_map="auto"
+    )
+else:
+    print("Reusing existing model and tokenizer from GPU memory!")
+
+model.config.use_cache = False
+model.gradient_checkpointing_enable()
+model = prepare_model_for_kbit_training(model)
+
+# 2. Configure High-Capacity LoRA Matrices (r=32, alpha=64)
+lora_config = LoraConfig(
+    r=32,
+    lora_alpha=64,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM"
+)
+model = get_peft_model(model, lora_config)
+print("Configured LoRA adapter on all 7 projections (r=32, alpha=64).")
+model.print_trainable_parameters()
+
+# 3. Load High-Density Golden Curriculum
+sft_path = "/kaggle/working/data/tamil_scaled_sft_10k.jsonl"
 conversations = []
 with open(sft_path, "r", encoding="utf-8") as f:
     for i, line in enumerate(f):
         if line.strip():
             conversations.append(json.loads(line))
-        if i >= 3000:  # Train on top 3,000 highly diverse golden trees per run for optimal convergence
+        if i >= 1200:  # Train on top 1,200 golden multi-turn conversation trees for rapid high-accuracy convergence
             break
 
 print(f"Loaded {len(conversations)} high-density golden conversation trees.")
 
-# 2. Tokenize with Completion-Only Loss Masking
+# 4. Tokenize with Strict Completion-Only Loss Masking
 tokenized_records = []
 assistant_marker = "<|im_start|>assistant\n"
 end_marker = "<|im_end|>\n"
@@ -50,7 +84,7 @@ for conv in conversations:
     input_ids = enc["input_ids"][0]
     labels = torch.full_like(input_ids, -100)
 
-    # Locate each assistant turn and unmask only assistant tokens
+    # Locate each assistant turn and unmask only assistant response tokens
     text_chunks = full_text.split(assistant_marker)
     curr_pos = len(tokenizer(text_chunks[0], add_special_tokens=False)["input_ids"])
     
@@ -74,36 +108,18 @@ for conv in conversations:
 print(f"Completion-masked tokenization ready: {len(tokenized_records)} samples.")
 train_dataset = Dataset.from_list(tokenized_records)
 
-# 3. LoRA Setup
-if not hasattr(model, "peft_config"):
-    try:
-        model = prepare_model_for_kbit_training(model)
-    except Exception as e:
-        print("Note on prepare_model_for_kbit_training:", e)
-    lora_config = LoraConfig(
-        r=32,
-        lora_alpha=64,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM"
-    )
-    model = get_peft_model(model, lora_config)
-    print("Configured LoRA adapter (r=32, alpha=64).")
-else:
-    print("Reusing existing LoRA adapter configuration.")
-
+# 5. Training Hyperparameters
 model.train()
 output_dir = "/kaggle/working/tamil_qwen3_mastery_adapter"
 
 training_args = TrainingArguments(
     output_dir=output_dir,
-    per_device_train_batch_size=4,
-    gradient_accumulation_steps=2,
+    per_device_train_batch_size=2,
+    gradient_accumulation_steps=4,
     num_train_epochs=2,
-    learning_rate=1e-4,
+    learning_rate=1.5e-4,
     fp16=True,
-    logging_steps=25,
+    logging_steps=15,
     save_strategy="no",
     report_to="none",
     optim="paged_adamw_8bit"
@@ -116,14 +132,15 @@ trainer = Trainer(
     data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, pad_to_multiple_of=8, return_tensors="pt", padding=True)
 )
 
-print("Starting Scaled High-Density Training on 2x Tesla T4...")
+print("Starting Production Completion-Masked Training on 2x Tesla T4...")
 train_res = trainer.train()
 
 trainer.save_model(output_dir)
 tokenizer.save_pretrained(output_dir)
 model.eval()
 globals()['model'] = model
-print(f"Scaled Training Complete! Final Loss: {train_res.training_loss:.4f}")
+globals()['tokenizer'] = tokenizer
+print(f"Production Training Complete! Final Loss: {train_res.training_loss:.4f}")
 print("Saved production adapter to:", output_dir)
 """
     await sync_kaggle.execute_remote(train_code)
