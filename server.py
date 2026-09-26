@@ -1,11 +1,11 @@
 """
 Tamil LLM & GPT Studio Server
-Serves the professional light-theme frontend and bridges requests to the live Kaggle GPU backend.
+Serves the professional light-theme frontend and bridges requests to the
+vLLM text engine running on RunPod.
 """
 
 import os
-import sys
-import re
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -13,11 +13,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 
-# Import Kaggle live bridge
-try:
-    from sync_kaggle import execute_remote
-except ImportError:
-    execute_remote = None
+# RunPod text engine base URL, e.g. https://<pod-id>-8000.proxy.runpod.net
+# Changes whenever the pod is redeployed -- set/update this via the
+# RUNPOD_TEXT_URL environment variable rather than editing code.
+RUNPOD_TEXT_URL = os.environ.get("RUNPOD_TEXT_URL", "").rstrip("/")
+RUNPOD_MODEL = os.environ.get("RUNPOD_MODEL", "Qwen/Qwen2.5-72B-Instruct-AWQ")
 
 app = FastAPI(title="Tamil LLM Qwen 3.6 Studio Server", version="1.0")
 
@@ -36,16 +36,36 @@ class ChatRequest(BaseModel):
     max_tokens: Optional[int] = 512
     top_p: Optional[float] = 0.9
 
+SYSTEM_PROMPT = (
+    "You are a senior, native Tamil language expert and professional AI assistant. "
+    "Regardless of whether the user writes in English, Tanglish, or Tamil, ALWAYS respond in fluent, grammatically accurate, pure Tamil (தமிழ்). "
+    "When asked to write a letter, email, or official document, IMMEDIATELY draft the full, formal letter directly in proper Tamil (பொருள், மதிப்பிற்குரிய ஐயா, முழுமையான கடித உள்ளடக்கம், இப்படிக்கு). "
+    "When the user provides names, addresses, or contact information, IMMEDIATELY embed them seamlessly into the requested letter or task. "
+    "CRITICAL: NEVER output an empty list of bracket placeholders like [நீங்கள் பெயர்] or [உங்கள் முகவரி]. Always write the complete, ready-to-use, professional letter in full.\n\n"
+    "Reference Exemplar:\n"
+    "User: write email for leave letter for school\n"
+    "Assistant:\n"
+    "பொருள்: மருத்துவக் காரணங்களுக்காக விடுப்பு விண்ணப்பம்\n\n"
+    "மதிப்பிற்குரிய வகுப்பு ஆசிரியர் அவர்களுக்கு,\n\n"
+    "வணக்கம். என் பெயர் செல்வன் கவின், பத்தாம் வகுப்பு 'அ' பிரிவில் பயின்று வருகிறேன். எனக்கு உடல்நலக் குறைவு மற்றும் காய்ச்சல் ஏற்பட்டுள்ளதால், மருத்துவரின் அறிவுரைப்படி இரண்டு நாட்கள் ஓய்வெடுக்க வேண்டியுள்ளது.\n\n"
+    "எனவே, வரும் 25-09-2026 முதல் 26-09-2026 வரை எனக்கு விடுப்பு அளித்து உதவுமாறு பணிவுடன் கேட்டுக்கொள்கிறேன். பள்ளிக்குத் திரும்பியவுடன் விடுபட்ட பாடங்களை நிறைவு செய்கிறேன்.\n\n"
+    "நன்றி.\n\n"
+    "இப்படிக்கு,\n"
+    "தங்கள் உண்மையுள்ள மாணவன்,\n"
+    "கவின் (பத்தாம் வகுப்பு)."
+)
+
 @app.post("/chat")
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
     """
-    Executes live inference directly against the active Qwen 3.6 model in Kaggle GPU memory
-    with full multi-turn conversation memory support.
+    Executes live inference against the Qwen2.5-72B-AWQ model served by
+    vLLM on RunPod, with full multi-turn conversation memory support.
     """
-    if not execute_remote:
+    if not RUNPOD_TEXT_URL:
         return {
-            "response": f"வணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt or 'உரையாடல்'}'.",
+            "response": f"வணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt or 'உரையாடல்'}'. "
+                        "(RUNPOD_TEXT_URL is not configured on the server.)",
             "status": "demo"
         }
 
@@ -59,103 +79,60 @@ async def chat_endpoint(req: ChatRequest):
 
     tokens_to_generate = min(max(req.max_tokens or 256, 128), 512)
 
-    # Python execution snippet inside Kaggle container using chat template
-    py_code = f"""
-import sys, torch
-try:
-    if 'tokenizer' in globals() and 'model' in globals():
-        # Ensure mastery adapter is active if available on disk
-        import os
-        adapter_path = '/kaggle/working/tamil_qwen3_mastery_adapter'
-        if os.path.exists(adapter_path) and hasattr(model, 'load_adapter'):
-            try:
-                if 'mastery' not in getattr(model, 'peft_config', dict()):
-                    model.load_adapter(adapter_path, adapter_name='mastery')
-                model.set_adapter('mastery')
-            except Exception:
-                pass
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for m in raw_turns:
+        if isinstance(m, dict) and m.get("role") in ("user", "assistant") and m.get("content"):
+            messages.append({"role": m["role"], "content": m["content"]})
 
-        system_content = (
-            "You are a senior, native Tamil language expert and professional AI assistant. "
-            "Regardless of whether the user writes in English, Tanglish, or Tamil, ALWAYS respond in fluent, grammatically accurate, pure Tamil (தமிழ்). "
-            "When asked to write a letter, email, or official document, IMMEDIATELY draft the full, formal letter directly in proper Tamil (பொருள், மதிப்பிற்குரிய ஐயா, முழுமையான கடித உள்ளடக்கம், இப்படிக்கு). "
-            "When the user provides names, addresses, or contact information, IMMEDIATELY embed them seamlessly into the requested letter or task. "
-            "CRITICAL: NEVER output an empty list of bracket placeholders like [நீங்கள் பெயர்] or [உங்கள் முகவரி]. Always write the complete, ready-to-use, professional letter in full.\\n\\n"
-            "Reference Exemplar:\\n"
-            "User: write email for leave letter for school\\n"
-            "Assistant:\\n"
-            "பொருள்: மருத்துவக் காரணங்களுக்காக விடுப்பு விண்ணப்பம்\\n\\n"
-            "மதிப்பிற்குரிய வகுப்பு ஆசிரியர் அவர்களுக்கு,\\n\\n"
-            "வணக்கம். என் பெயர் செல்வன் கவின், பத்தாம் வகுப்பு 'அ' பிரிவில் பயின்று வருகிறேன். எனக்கு உடல்நலக் குறைவு மற்றும் காய்ச்சல் ஏற்பட்டுள்ளதால், மருத்துவரின் அறிவுரைப்படி இரண்டு நாட்கள் ஓய்வெடுக்க வேண்டியுள்ளது.\\n\\n"
-            "எனவே, வரும் 25-09-2026 முதல் 26-09-2026 வரை எனக்கு விடுப்பு அளித்து உதவுமாறு பணிவுடன் கேட்டுக்கொள்கிறேன். பள்ளிக்குத் திரும்பியவுடன் விடுபட்ட பாடங்களை நிறைவு செய்கிறேன்.\\n\\n"
-            "நன்றி.\\n\\n"
-            "இப்படிக்கு,\\n"
-            "தங்கள் உண்மையுள்ள மாணவன்,\\n"
-            "கவின் (பத்தாம் வகுப்பு)."
-        )
-        raw_turns = {repr(raw_turns)}
-        messages = [{{'role': 'system', 'content': system_content}}]
-        for m in raw_turns:
-            if isinstance(m, dict) and m.get('role') in ('user', 'assistant') and m.get('content'):
-                messages.append({{'role': m['role'], 'content': m['content']}})
+    payload = {
+        "model": RUNPOD_MODEL,
+        "messages": messages,
+        "temperature": req.temperature or 0.2,
+        "top_p": req.top_p or 0.85,
+        "max_tokens": tokens_to_generate,
+    }
 
-        try:
-            formatted_input = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True) + '<think>\\n\\n</think>\\n'
-        except Exception:
-            formatted_input = str(raw_turns[-1].get('content', ''))
-
-        inputs = tokenizer(formatted_input, return_tensors='pt').to(model.device)
-        gen_kwargs = {{
-            'max_new_tokens': {tokens_to_generate},
-            'do_sample': True,
-            'temperature': 0.2,
-            'top_p': 0.85,
-            'repetition_penalty': 1.1,
-            'pad_token_id': tokenizer.eos_token_id
-        }}
-        with torch.inference_mode():
-            outputs = model.generate(**inputs, **gen_kwargs)
-        res_text = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-        print('INFERENCE_OUTPUT_START:' + res_text + ':INFERENCE_OUTPUT_END')
-    else:
-        print('ERR: model/tokenizer not yet loaded in Kaggle globals.')
-except Exception as e:
-    print('ERR:' + str(e))
-"""
     try:
-        raw_res = await execute_remote(py_code, stream_output=False)
-        if "INFERENCE_OUTPUT_START:" in raw_res:
-            ans = raw_res.split("INFERENCE_OUTPUT_START:")[1].split(":INFERENCE_OUTPUT_END")[0].strip()
-            # 1. Thought-leak fail-safe: Strip internal reasoning tokens cleanly
-            if "</think>" in ans:
-                ans = ans.split("</think>")[1].strip()
-            elif "<think>" in ans:
-                ans = ans.replace("<think>", "").strip()
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(f"{RUNPOD_TEXT_URL}/v1/chat/completions", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        ans = data["choices"][0]["message"]["content"].strip()
 
-            # 2. Neuro-symbolic grammar, Sandhi, and Subject-Verb agreement fail-safe
-            try:
-                from grammar_validator import validator
-                ans = validator.correct_sandhi(ans)
-            except Exception:
-                pass
+        # 1. Thought-leak fail-safe: Strip internal reasoning tokens cleanly
+        if "</think>" in ans:
+            ans = ans.split("</think>")[1].strip()
+        elif "<think>" in ans:
+            ans = ans.replace("<think>", "").strip()
 
-            # 3. Truncation fail-safe: Ensure graceful termination
-            if not ans:
-                ans = "வணக்கம்! உங்களுக்கு நான் எவ்வாறு உதவ முடியும்?"
+        # 2. Neuro-symbolic grammar, Sandhi, and Subject-Verb agreement fail-safe
+        try:
+            from grammar_validator import validator
+            ans = validator.correct_sandhi(ans)
+        except Exception:
+            pass
 
-            return {"response": ans, "status": "success"}
-        elif "ERR:" in raw_res:
-            err_msg = raw_res.split("ERR:")[1].strip()
-            return {"response": f"Kaggle GPU Runtime: {err_msg}", "status": "runtime_note"}
-        else:
-            return {"response": raw_res.strip(), "status": "success"}
-    except Exception as e:
-        err_str = str(e)
-        if "timed out during opening handshake" in err_str or "ConnectTimeout" in err_str or "TimeoutError" in err_str:
-            friendly_msg = "⚠️ **Kaggle GPU Session Disconnected/Asleep**\n\nThe temporary Kaggle GPU session has timed out due to inactivity. Please open your Kaggle notebook tab, ensure the session is active/running, and refresh."
-            return {"response": friendly_msg, "status": "disconnected"}
+        # 3. Truncation fail-safe: Ensure graceful termination
+        if not ans:
+            ans = "வணக்கம்! உங்களுக்கு நான் எவ்வாறு உதவ முடியும்?"
+
+        return {"response": ans, "status": "success"}
+    except httpx.HTTPStatusError as e:
         return {
-            "response": f"Bridge notice: {err_str}",
+            "response": f"RunPod GPU Runtime: {e.response.status_code} {e.response.text}",
+            "status": "runtime_note",
+        }
+    except httpx.RequestError as e:
+        friendly_msg = (
+            "⚠️ **RunPod GPU backend unreachable**\n\n"
+            f"Could not reach the RunPod text engine at {RUNPOD_TEXT_URL}. "
+            "Check that the pod is running and RUNPOD_TEXT_URL still matches "
+            f"its current proxy URL.\n\nDetails: {e}"
+        )
+        return {"response": friendly_msg, "status": "disconnected"}
+    except Exception as e:
+        return {
+            "response": f"Bridge notice: {e}",
             "status": "error"
         }
 
