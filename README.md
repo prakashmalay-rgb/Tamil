@@ -86,3 +86,11 @@ Set the `"id"` field in `kernel-metadata.json` to your Kaggle username and noteb
 ```
 
 Whenever you run `git push origin main`, GitHub Actions will automatically push your latest notebook directly to Kaggle and trigger execution using Kaggle's cloud GPU.
+
+---
+
+## 4. RunPod Serving (Text + Vision + Whisper)
+
+See [`deploy/docker/README.md`](deploy/docker/README.md) for the Docker image that
+serves the fine-tuned model plus a vision engine and Whisper ASR on a RunPod GPU
+pod (built and verified for NVIDIA Blackwell GPUs).
