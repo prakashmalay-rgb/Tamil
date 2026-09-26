@@ -1,6 +1,7 @@
 import os
 import sys
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
@@ -21,6 +22,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# RunPod text engine base URL, e.g. https://<pod-id>-8000.proxy.runpod.net
+# Changes whenever the pod is redeployed -- set/update this in Vercel's
+# project environment variables rather than editing code.
+RUNPOD_TEXT_URL = os.environ.get("RUNPOD_TEXT_URL", "").rstrip("/")
+RUNPOD_MODEL = os.environ.get("RUNPOD_MODEL", "Qwen/Qwen2.5-72B-Instruct-AWQ")
+
 class ChatRequest(BaseModel):
     prompt: str
     temperature: Optional[float] = 0.7
@@ -30,10 +37,42 @@ class ChatRequest(BaseModel):
 @app.post("/chat")
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequest):
-    return {
-        "response": f"[Tamil Qwen 3.6.6 Studio - Vercel Edge]\nவணக்கம்! உங்கள் வினவல் பெறப்பட்டது: '{req.prompt}'. மாதிரி பதிலளிக்க தயாராக உள்ளது.",
-        "status": "success"
+    if not RUNPOD_TEXT_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="RUNPOD_TEXT_URL is not configured. Set it in Vercel's "
+                   "project environment variables to the pod's text engine "
+                   "URL (e.g. https://<pod-id>-8000.proxy.runpod.net).",
+        )
+
+    payload = {
+        "model": RUNPOD_MODEL,
+        "messages": [{"role": "user", "content": req.prompt}],
+        "temperature": req.temperature,
+        "max_tokens": req.max_tokens,
+        "top_p": req.top_p,
     }
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{RUNPOD_TEXT_URL}/v1/chat/completions", json=payload
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"RunPod backend returned an error: {e.response.status_code} {e.response.text}",
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Could not reach RunPod backend: {e}",
+        )
+
+    reply = data["choices"][0]["message"]["content"]
+    return {"response": reply, "status": "success"}
 
 def get_file_content(subpath: str) -> str:
     candidates = [
