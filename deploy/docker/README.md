@@ -31,39 +31,57 @@ This image instead uses:
   llvmlite, etc. to incompatible latest releases) during manual debugging
   on the original pod.
 
+## Confirmed working: non-MIG single GPU (A100 80GB)
+
+Deployed and verified end-to-end on a **1x A100 SXM 80GB** (non-MIG) pod:
+`--enforce-eager` + `VLLM_USE_V1=0` + `TEXT_TP=1` loaded the text engine
+successfully and served real completions via `/v1/chat/completions`. This
+is the known-good configuration for a single full GPU.
+
 ## Known unresolved issue: MIG model-loading hang
 
-Even with the correct torch/vllm versions, **vllm's model loading hung
-indefinitely** on this MIG-partitioned pod -- both at `--tensor-parallel-size 2`
-and `--tensor-parallel-size 1` (single GPU). Symptoms:
+On an earlier **MIG-partitioned** Blackwell pod (`2g.48gb` slices), vllm's
+model loading hung indefinitely -- both at `--tensor-parallel-size 2` and
+`--tensor-parallel-size 1`. Symptoms:
 
 - Process sits in `do_poll` (blocked on an fd, not doing CPU or disk work).
 - `Loading safetensors checkpoint shards: 0%` never advances.
 - Raw `safetensors.torch.load_file()` on the same shard works fine in
   isolation (~20s for a 3.5GB file) -- so it's not a storage or file
   problem.
-- `--enforce-eager` (disabling CUDA graph capture / torch.compile) got
-  further than without it, past NCCL/P2P init, suggesting graph capture was
-  *part* of the problem -- but the hang recurred at the weight-loading step
-  regardless.
 
-This was **not root-caused** before the pod was terminated (ran out of
-RunPod credits mid-investigation). The entrypoint defaults to
-`VLLM_USE_V1=0` (forces vllm's older, more battle-tested engine instead of
-the newer async V1 engine) as the leading untested hypothesis -- the V1
-engine's multiprocess IPC is newer and more likely to have rough edges on
-unusual hardware (MIG slices lack full P2P between GPUs, which the logs
-flagged: `Custom allreduce is disabled because your platform lacks GPU P2P
-capability`).
+This was **not root-caused** and the MIG pod was never retested after the
+fix (it was terminated for unrelated reasons -- out of RunPod credits).
+Given the non-MIG pod above worked cleanly with the same flags, **MIG
+GPU partitioning remains the prime suspect** (MIG slices lack full P2P
+between GPUs, which the logs flagged: `Custom allreduce is disabled
+because your platform lacks GPU P2P capability`).
 
-**If engines still hang when you deploy this image on a MIG pod:**
+**If engines hang on a MIG pod:**
 1. Check `docker logs` / `/workspace/logs/vllm_text.log` for where it stops.
-2. Try `-e VLLM_USE_V1=1` to see if the new engine behaves differently (it
-   was the one observed hanging, so this mainly confirms the symptom).
-3. Try requesting a **non-MIG (full GPU)** pod instead -- MIG is the prime
-   suspect and was not tested without it.
-4. Try `TEXT_TP=1` (single GPU) to isolate multi-GPU sync issues, though
-   note single-GPU also hung in testing.
+2. Confirm `--enforce-eager` and `VLLM_USE_V1=0` are in effect (both are
+   defaults in `start_services.sh` now).
+3. If it still hangs, request a **non-MIG (full GPU)** pod instead --
+   this is the configuration actually confirmed working.
+
+## Known unresolved issue: 3 engines don't fit on one GPU
+
+Running the text engine (Qwen2.5-72B-AWQ) and vision engine (Qwen2-VL-7B)
+simultaneously on a single 80GB GPU crashed the vision engine with
+`ValueError: No available memory for the cache blocks`, even at
+`--gpu-memory-utilization 0.20` for vision (after text had already claimed
+0.65) and with `--mm-processor-kwargs '{"max_pixels": 1003520}'` capping
+image resolution to reduce vision's worst-case token reservation. Each
+vLLM process profiles/reserves GPU memory independently without knowing
+about the other engine's reservation, and Qwen2-VL's own worst-case
+multimodal-token profiling (up to 32,768 tokens per image) makes the
+budget tighter than the raw weight sizes (39GB + 15.5GB) suggest.
+
+**Current state**: `start_services.sh` starts text + whisper only. Vision
+is not auto-started. To use vision, you need either a second GPU (so it
+gets its own full memory budget) or a smaller vision model. If you retest
+this, don't assume retuning `--gpu-memory-utilization` alone will fix it --
+0.20, 0.35, and pixel-capping were all tried and failed identically.
 
 ## Build & push
 
@@ -100,14 +118,21 @@ in the pod template's registry auth settings.
    image; pre-download them once with `huggingface-cli download <model>
    --local-dir /workspace/.cache/huggingface/...` or let the first launch
    pull them, which will be slow).
-4. Expose ports 8000 (text), 8002 (whisper), 8003 (vision).
-5. Deploy. The entrypoint starts all three engines automatically and tails
-   their logs.
+4. Expose ports 8000 (text), 8002 (whisper), and 8003 (vision, only if
+   you set `ENABLE_VISION=1` -- see below).
+5. Deploy. The entrypoint starts the text engine and Whisper automatically
+   and tails their logs. Vision does not start by default (see "Known
+   unresolved issue: 3 engines don't fit on one GPU" above).
 
 ## Overriding models / GPU count
 
 Set these as pod environment variables:
 - `TEXT_MODEL` (default `Qwen/Qwen2.5-72B-Instruct-AWQ`)
 - `VISION_MODEL` (default `Qwen/Qwen2-VL-7B-Instruct`)
-- `TEXT_TP` (default `2`) -- tensor-parallel size for the text engine
+- `TEXT_TP` (default `2`) -- tensor-parallel size for the text engine. Use
+  `1` on a single-GPU pod.
 - `VLLM_USE_V1` (default `0`) -- see "Known unresolved issue" above
+- `ENABLE_VISION` (default `0`) -- set to `1` to also start the vision
+  engine on port 8003. Only do this on a pod with a GPU dedicated to
+  vision alone; it is not safe to co-locate with the text engine (see
+  above).
